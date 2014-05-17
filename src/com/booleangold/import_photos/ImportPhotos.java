@@ -3,54 +3,91 @@ package com.booleangold.import_photos;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.prefs.BackingStoreException;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.prefs.Preferences;
 
 import javax.swing.*;
 
 import java.awt.event.*;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.*;
-import com.drew.metadata.exif.ExifIFD0Directory;
+import com.drew.metadata.exif.ExifSubIFDDirectory;
 
-public class ImportPhotos extends JFrame {
+public class ImportPhotos extends JFrame
+                          implements ActionListener, PropertyChangeListener {
+    static final long serialVersionUID = 1;
+    private static final String SOURCE_KEY = "source_dir_";
+    private static final String DEST_KEY = "dest_dir_";
+    private static final int RECENT_DIR_COUNT = 4;
+
+    private static final SimpleDateFormat mYearFormat = new SimpleDateFormat("yyyy");
+    private static final SimpleDateFormat mMonthFormat = new SimpleDateFormat("MM");
+
     private final JComboBox mSource;
     private final JButton mBrowseSourceButton;
     private final JComboBox mDest;
     private final JButton mBrowseDestButton;
     private final JButton mImportButton;
     private final JButton mCancelButton;
-    private static final String SOURCE_KEY = "source_dir_";
-    private static final String DEST_KEY = "source_dir_";
+    private final JProgressBar mProgressBar;
+    private final Preferences mPrefs;
+    private CopyTask mCopyTask;
 
-    static final long serialVersionUID = 1;
+    class CopyTask extends SwingWorker<Void, Void> {
+        private final File mSource;
+        private final String mDestRoot;
+
+        CopyTask(File source, String destRoot) {
+            mSource = source;
+            mDestRoot = destRoot;
+        }
+
+        @Override
+        protected Void doInBackground() throws Exception {
+            try {
+                List<File> filesToImport = CollectDirectory(mSource, mDestRoot);
+                // System.out.println("Importing files: " + filesToImport.size());
+                firePropertyChange("fileCount", 0, filesToImport.size());
+            }
+            catch (Exception e) {
+                // TODO: Error dialog
+                System.out.println("Failed to traverse directories");
+            }
+            return null;
+        }
+    }
 
     ImportPhotos(String title) {
         setTitle(title);
 
         // Create Components
-        Preferences prefs = Preferences.userNodeForPackage(ImportPhotos.class);
+        mPrefs = Preferences.userNodeForPackage(ImportPhotos.class);
 
-        mSource = MakeComboBox(prefs, "E:\\DCIM\\", SOURCE_KEY);
+        mSource = MakeComboBox("E:\\DCIM\\", SOURCE_KEY);
         JLabel sourceLabel = new JLabel("Import pictures from: ");
         mBrowseSourceButton = new JButton("Browse");
         mBrowseSourceButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 ChooseDirectory(mSource);
+                SaveComboBox(mSource, SOURCE_KEY);
             }
         });
 
 
         JLabel destLabel = new JLabel("Copy pictures to: ");
-        mDest = MakeComboBox(prefs, "D:\\Users\\Beth\\Documents\\Pictures", DEST_KEY);
+        mDest = MakeComboBox("D:\\Users\\Beth\\Documents\\Pictures", DEST_KEY);
         mBrowseDestButton = new JButton("Browse");
         mBrowseDestButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 ChooseDirectory(mDest);
+                SaveComboBox(mDest, DEST_KEY);
             }
         });
 
@@ -70,6 +107,8 @@ public class ImportPhotos extends JFrame {
             }
         });
 
+        mProgressBar = new JProgressBar(0, 100);
+
         //Create a layout and add components to it.
         GroupLayout layout = new GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
@@ -78,50 +117,55 @@ public class ImportPhotos extends JFrame {
         layout.setAutoCreateContainerGaps(true);
 
         layout.setHorizontalGroup(
-            layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING)
-                    .addComponent(sourceLabel)
-                    .addComponent(destLabel))
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.TRAILING)
-                    .addComponent(mSource)
-                    .addComponent(mDest)
-                    .addComponent(mImportButton))
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.TRAILING)
-                    .addComponent(mBrowseSourceButton)
-                    .addComponent(mBrowseDestButton)
+            layout.createParallelGroup(GroupLayout.Alignment.LEADING)
+                .addGroup(layout.createSequentialGroup()
+                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING)
+                        .addComponent(sourceLabel)
+                        .addComponent(destLabel))
+                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.TRAILING)
+                        .addComponent(mSource)
+                        .addComponent(mDest))
+                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.TRAILING)
+                        .addComponent(mBrowseSourceButton)
+                        .addComponent(mBrowseDestButton))
+                    )
+                .addComponent(mProgressBar)
+                .addGroup(layout.createSequentialGroup()
+                    .addComponent(mImportButton)
                     .addComponent(mCancelButton))
-                    );
+            );
 
         layout.setVerticalGroup(
             layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
-                    .addComponent(sourceLabel)
-                    .addComponent(mSource)
-                    .addComponent(mBrowseSourceButton))
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
-                    .addComponent(destLabel)
-                    .addComponent(mDest)
-                    .addComponent(mBrowseDestButton))
-                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
-                    .addComponent(mImportButton)
-                    .addComponent(mCancelButton))
-                    );
+                .addGroup(layout.createSequentialGroup()
+                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+                        .addComponent(sourceLabel)
+                        .addComponent(mSource)
+                        .addComponent(mBrowseSourceButton))
+                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+                        .addComponent(destLabel)
+                        .addComponent(mDest)
+                        .addComponent(mBrowseDestButton))
+                     )
+                 .addComponent(mProgressBar)
+                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+                         .addComponent(mImportButton)
+                         .addComponent(mCancelButton, GroupLayout.Alignment.TRAILING))
+            );
 
         this.pack();
         this.setResizable(false);
     }
 
-    JComboBox MakeComboBox(Preferences prefs, String defaultItem, String base_key) {
+    JComboBox MakeComboBox(String defaultItem, String base_key) {
         JComboBox retval = new JComboBox();
 
-        try {
-            String[] keys = prefs.keys();
-            for (String key : keys) {
-                retval.addItem(prefs.get(key, "Missing Preference"));
+        for (int i = 0; i < RECENT_DIR_COUNT; i++) {
+            String key = base_key + Integer.toString(i);
+            String dir = mPrefs.get(key, null);
+            if (dir != null) {
+                retval.addItem(dir);
             }
-        }
-        catch (BackingStoreException e) {
-            // TODO
         }
         if (retval.getItemCount() == 0) {
             retval.addItem(defaultItem);
@@ -129,10 +173,10 @@ public class ImportPhotos extends JFrame {
         return retval;
     }
 
-    void SaveComboBox(JComboBox cb, Preferences prefs, String base_key) {
+    void SaveComboBox(JComboBox cb, String base_key) {
         int itemCount = cb.getItemCount();
-        for (int i = 0; i < itemCount; i++) {
-            prefs.put(base_key + Integer.toString(i), (String) cb.getItemAt(i));
+        for (int i = 0; i < RECENT_DIR_COUNT && i < itemCount; i++) {
+            mPrefs.put(base_key + Integer.toString(i), (String) cb.getItemAt(i));
         }
     }
 
@@ -150,7 +194,7 @@ public class ImportPhotos extends JFrame {
         int returnVal = chooser.showOpenDialog(this);
         if(returnVal == JFileChooser.APPROVE_OPTION) {
             String path = chooser.getSelectedFile().getAbsolutePath();
-            comboBox.addItem(path);
+            comboBox.insertItemAt(path, 0);
             comboBox.setSelectedItem(path);
         }
     }
@@ -172,49 +216,123 @@ public class ImportPhotos extends JFrame {
             System.out.println("Failed to convert items to Strings");
             return;
         }
-        try {
-            ImportDirectory(sourceDir, destRoot);
-        }
-        catch (Exception e) {
-            // TODO: Error dialog
-            System.out.println("Failed to traverse directories");
-        }
+        mProgressBar.setIndeterminate(true);
+        mCopyTask = new CopyTask(sourceDir, destRoot);
+        mCopyTask.addPropertyChangeListener(this);
+        mCopyTask.execute();
     }
 
-    void ImportDirectory(File sourceDir, String destRoot) {
+    List<File> CollectDirectory(File sourceDir, String destRoot) {
+        LinkedList<File> result = new LinkedList<File>();
         for (File file : sourceDir.listFiles()) {
             if (file.isDirectory()) {
-                ImportDirectory(file, destRoot);
+                result.addAll(CollectDirectory(file, destRoot));
             }
             else {
-                ImportFile(file);
+                System.out.println("File: " + file);
+                result.add(file);
             }
         }
+        return result;
     }
 
-    void ImportFile(File file) {
+    File CollectFile(File file, String destRoot) {
+        String year = null;
+        String month = null;
+
         try {
             Metadata meta = ImageMetadataReader.readMetadata(file);
-            Directory exif = meta.getDirectory(ExifIFD0Directory.class);
-            Date date = exif.getDate(ExifIFD0Directory.TAG_DATETIME);
-            System.out.println("Hello " + file.getAbsolutePath() + " " + date.toString());
+            Directory exif = meta.getDirectory(ExifSubIFDDirectory.class);
+            Date date = exif.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL);
+            year = mYearFormat.format(date);
+            month = mMonthFormat.format(date);
         }
         catch (ImageProcessingException e) {
             if (file.getName().endsWith(".mov") || file.getName().endsWith(".MOV")) {
-                SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
-                System.out.println("Hello " + file.getAbsolutePath() + " " + sdf.format(file.lastModified()));
+                year = mYearFormat.format(file.lastModified());
+                month = mMonthFormat.format(file.lastModified());
             }
            // TODO
         }
         catch (IOException e) {
             // TODO
         }
+
+        if (year != null && month != null) {
+            File yearDir = new File(destRoot, year);
+            File monthDir = new File(yearDir, month);
+            if (!monthDir.exists()) {
+                monthDir.mkdirs();
+            }
+            // TODO:  Copy file to monthDir
+            File destFile = new File(monthDir, file.getName());
+            if (destFile.exists()) {
+                System.out.println("Skipping duplicate file " + destFile.getPath());
+            }
+            else {
+                System.out.println("Preparing to import " + file.getPath() + " to " + destFile.getPath());
+                // return new File(file, destFile);
+            }
+        }
+        return null;
     }
 
+    /*
+     *
+                InputStream is = null;
+                OutputStream os = null;
+                try {
+                    is = new FileInputStream(file);
+                    os = new FileOutputStream(destFile);
+                    int length;
+                    while ((length = is.read(mBuffer)) > 0) {
+                        os.write(mBuffer, 0, length);
+                    }
+                    System.out.println("Successfully copied " + file.getPath() + " to " + destFile.getPath());
+                } catch (FileNotFoundException e) {
+                    System.out.println("Failed to copy " + file.getPath() + " to " + destFile.getPath());
+                } catch (IOException e) {
+                    System.out.println("Failed to copy " + file.getPath() + " to " + destFile.getPath());
+                } finally {
+                    try {
+                        is.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                    try {
+                        os.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+     */
     public static void main(String[] args) {
        ImportPhotos window = new ImportPhotos("Import Photos");
 
        window.setVisible(true);
        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+        if ("progress" == evt.getPropertyName()) {
+            int progress = (Integer) evt.getNewValue();
+            mProgressBar.setValue(progress);
+        }
+        else if ("fileCount" == evt.getPropertyName()) {
+            int count = (Integer) evt.getNewValue();
+            System.out.println("Importing files: " + count);
+            mProgressBar.setIndeterminate(false);
+            mProgressBar.setMaximum(count);
+        }
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        // TODO Auto-generated method stub
+
     }
 }
