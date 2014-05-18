@@ -9,7 +9,6 @@ import java.util.List;
 import javax.swing.SwingWorker;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
@@ -23,6 +22,7 @@ class CopyTask extends SwingWorker<Void, Void> {
 
     private final File mSource;
     private final String mDestRoot;
+    private final List<File> mCopiedFiles = new LinkedList<File>();
 
     CopyTask(File source, String destRoot) {
         mSource = source;
@@ -38,6 +38,9 @@ class CopyTask extends SwingWorker<Void, Void> {
 
             int count = 0;
             for (File file : filesToImport) {
+                if (isCancelled()) {
+                    break;
+                }
                 count++;
                 ImportFile(file);
                 setProgress(count * 100 / total);
@@ -101,6 +104,7 @@ class CopyTask extends SwingWorker<Void, Void> {
                 System.out.println("Preparing to import " + file.getPath() + " to " + destFile.getPath());
                 try {
                     FileUtils.copyFile(file, destFile, true);
+                    mCopiedFiles.add(destFile);
                 }
                 catch (Exception e) {
                     // TODO: Error dialog

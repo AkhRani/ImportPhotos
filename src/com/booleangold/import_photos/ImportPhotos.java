@@ -4,6 +4,7 @@ import java.io.*;
 import java.util.prefs.Preferences;
 
 import javax.swing.*;
+import javax.swing.SwingWorker.StateValue;
 
 import java.awt.event.*;
 import java.beans.PropertyChangeEvent;
@@ -24,7 +25,7 @@ public class ImportPhotos extends JFrame
     private final JButton mCancelButton;
     private final JProgressBar mProgressBar;
     private final Preferences mPrefs;
-    private CopyTask mCopyTask;
+    private CopyTask mCopyTask = null;
 
     ImportPhotos(String title) {
         setTitle(title);
@@ -67,9 +68,10 @@ public class ImportPhotos extends JFrame
         mCancelButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                ImportPhotos.this.dispose();
+                Cancel();
             }
         });
+        mCancelButton.setEnabled(false);
 
         mProgressBar = new JProgressBar(0, 100);
 
@@ -181,19 +183,37 @@ public class ImportPhotos extends JFrame
             return;
         }
         mProgressBar.setIndeterminate(true);
+        mImportButton.setEnabled(false);
+        mCancelButton.setEnabled(true);
         mCopyTask = new CopyTask(sourceDir, destRoot);
         mCopyTask.addPropertyChangeListener(this);
         mCopyTask.execute();
     }
 
+    void Cancel()
+    {
+        mCopyTask.cancel(false);
+    }
+
     @Override
     public void propertyChange(PropertyChangeEvent evt) {
-        if ("progress" == evt.getPropertyName()) {
-            int progress = (Integer) evt.getNewValue();
-            mProgressBar.setValue(progress);
+        assert mCopyTask != null;
+        String evtName = evt.getPropertyName();
+        if ("progress" == evtName) {
+            if (!mCopyTask.isDone()) {
+                int progress = (Integer) evt.getNewValue();
+                mProgressBar.setValue(progress);
+            }
         }
-        else if ("fileCount" == evt.getPropertyName()) {
+        else if ("fileCount" == evtName) {
             mProgressBar.setIndeterminate(false);
+        }
+        else if ("state" == evtName) {
+            if (StateValue.DONE == evt.getNewValue()) {
+                mProgressBar.setValue(0);
+                mImportButton.setEnabled(true);
+                mCancelButton.setEnabled(false);
+            }
         }
     }
 
