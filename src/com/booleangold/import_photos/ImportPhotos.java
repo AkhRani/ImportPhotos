@@ -25,6 +25,7 @@ public class ImportPhotos extends JFrame
     private final JButton mCancelButton;
     private final JProgressBar mProgressBar;
     private final Preferences mPrefs;
+    private final JTextArea mMessages;
     private CopyTask mCopyTask = null;
 
     ImportPhotos(String title) {
@@ -73,6 +74,10 @@ public class ImportPhotos extends JFrame
         });
         mCancelButton.setEnabled(false);
 
+        mMessages = new JTextArea(10, 40);
+        mMessages.setEditable(false);
+        JScrollPane scrollPane = new JScrollPane(mMessages);
+
         mProgressBar = new JProgressBar(0, 100);
 
         //Create a layout and add components to it.
@@ -95,6 +100,7 @@ public class ImportPhotos extends JFrame
                         .addComponent(mBrowseSourceButton)
                         .addComponent(mBrowseDestButton))
                     )
+                .addComponent(scrollPane)
                 .addComponent(mProgressBar)
                 .addGroup(layout.createSequentialGroup()
                     .addComponent(mImportButton)
@@ -113,6 +119,7 @@ public class ImportPhotos extends JFrame
                         .addComponent(mDest)
                         .addComponent(mBrowseDestButton))
                      )
+                 .addComponent(scrollPane)
                  .addComponent(mProgressBar)
                  .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
                          .addComponent(mImportButton)
@@ -185,7 +192,8 @@ public class ImportPhotos extends JFrame
         mProgressBar.setIndeterminate(true);
         mImportButton.setEnabled(false);
         mCancelButton.setEnabled(true);
-        mCopyTask = new CopyTask(sourceDir, destRoot);
+        mMessages.setText(null);
+        mCopyTask = new CopyTask(mMessages, sourceDir, destRoot);
         mCopyTask.addPropertyChangeListener(this);
         mCopyTask.execute();
     }
